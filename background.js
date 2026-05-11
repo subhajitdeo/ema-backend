@@ -1,53 +1,34 @@
-// ==================== BACKGROUND SERVICE WORKER ====================
-// Runs 24/7, listens for voice commands, manages tabs, summarises pages
+// ==================== BACKGROUND SERVICE WORKER (no speech recognition) ====================
+// Manages tabs, AI, summarisation, and speaks via chrome.tts.
+// Receives voice commands from offscreen document.
 
 let openRouterApiKey = '';
 let model = 'ring-2.6-1t:free';
-let isListening = false;
-let recognition = null;
-let synth = window.speechSynthesis;
-let availableVoices = [];
 let continuousMode = true;
-let isSpeaking = false;
-let zaraMemory = {};
+let offscreenCreated = false;
 
-// ---------- Load memory and API key ----------
-async function loadMemory() {
-    const result = await chrome.storage.local.get(['zara_memory', 'zara_openrouter_key', 'zara_selected_model']);
+// Load settings
+async function loadSettings() {
+    const result = await chrome.storage.local.get(['zara_openrouter_key', 'zara_selected_model', 'continuousMode']);
     openRouterApiKey = result.zara_openrouter_key || '';
     model = result.zara_selected_model || 'ring-2.6-1t:free';
-    zaraMemory = result.zara_memory || { name: 'boss', interests: [], conversationCount: 0 };
-    if (!zaraMemory.name) zaraMemory.name = 'boss';
+    continuousMode = result.continuousMode !== undefined ? result.continuousMode : true;
 }
-loadMemory();
+loadSettings();
 
-// ---------- Voice preparation ----------
-function loadVoices() { availableVoices = speechSynthesis.getVoices(); }
-loadVoices();
-if (speechSynthesis.onvoiceschanged !== undefined) speechSynthesis.onvoiceschanged = loadVoices;
-
+// ---------- Speak using chrome.tts (works in background) ----------
 function speakText(text) {
-    if (!synth) return;
     let cleanText = text.replace(/[^\w\s.,!?;:()-]/g, '').replace(/\s+/g, ' ').trim();
     if (!cleanText) return;
-    if (synth.speaking) synth.cancel();
-    isSpeaking = true;
-    const utterance = new SpeechSynthesisUtterance(cleanText);
-    utterance.rate = 0.9;
-    utterance.pitch = 1.0;
-    const voices = availableVoices.length ? availableVoices : synth.getVoices();
-    let selectedVoice = voices.find(v => v.name === "Google UK English Female");
-    if (!selectedVoice) selectedVoice = voices.find(v => v.name.includes("UK") && v.name.includes("Female"));
-    if (!selectedVoice) selectedVoice = voices.find(v => v.name === "Microsoft Hazel");
-    if (!selectedVoice) selectedVoice = voices.find(v => v.name === "Samantha");
-    if (!selectedVoice) selectedVoice = voices.find(v => v.lang === "en-US" && v.name.includes("Female"));
-    if (!selectedVoice) selectedVoice = voices.find(v => v.lang.startsWith("en"));
-    utterance.voice = selectedVoice || voices[0];
-    utterance.onend = () => { isSpeaking = false; };
-    setTimeout(() => synth.speak(utterance), 100);
+    chrome.tts.speak(cleanText, {
+        rate: 0.9,
+        pitch: 1.0,
+        lang: 'en-GB',
+        voiceName: 'Google UK English Female'
+    });
 }
 
-// ---------- Clean text (remove gibberish) ----------
+// ---------- Clean text ----------
 function cleanText(text) {
     return text.replace(/[^\w\s.,!?;:()-]/g, '').replace(/\s+/g, ' ').trim();
 }
@@ -61,12 +42,11 @@ async function summariseCurrentPage() {
             target: { tabId: tab.id },
             func: () => {
                 const bodyText = document.body.innerText || '';
-                return bodyText.substring(0, 3000); // limit length
+                return bodyText.substring(0, 3000);
             }
         });
         const pageText = result[0]?.result || '';
         if (!pageText) return "Could not read page content.";
-        // Call AI to summarise
         const summary = await askAI(`Summarise this page in 3 short sentences:\n${pageText}`);
         return summary;
     } catch (e) {
@@ -74,7 +54,7 @@ async function summariseCurrentPage() {
     }
 }
 
-// ---------- Ask AI (tool‑aware) ----------
+// ---------- Ask AI ----------
 async function askAI(prompt) {
     if (!openRouterApiKey) return "API key missing.";
     try {
@@ -98,55 +78,45 @@ async function askAI(prompt) {
     }
 }
 
-// ---------- Tab control commands ----------
+// ---------- Tab control ----------
 async function handleTabCommand(command, param = '') {
     const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!currentTab) return "No active tab.";
     switch (command) {
-        case 'close':
-            await chrome.tabs.remove(currentTab.id);
-            return "Tab closed.";
-        case 'duplicate':
-            await chrome.tabs.duplicate(currentTab.id);
-            return "Tab duplicated.";
-        case 'mute':
-            await chrome.tabs.update(currentTab.id, { muted: true });
-            return "Tab muted.";
-        case 'unmute':
-            await chrome.tabs.update(currentTab.id, { muted: false });
-            return "Tab unmuted.";
-        case 'pin':
-            await chrome.tabs.update(currentTab.id, { pinned: true });
-            return "Tab pinned.";
-        case 'unpin':
-            await chrome.tabs.update(currentTab.id, { pinned: false });
-            return "Tab unpinned.";
-        case 'reload':
-            await chrome.tabs.reload(currentTab.id);
-            return "Tab reloaded.";
-        case 'new':
-            await chrome.tabs.create({ url: param || 'https://www.google.com' });
-            return `Opened new tab${param ? ` with ${param}` : ''}.`;
-        default:
-            return "Command not recognised.";
+        case 'close': await chrome.tabs.remove(currentTab.id); return "Tab closed.";
+        case 'duplicate': await chrome.tabs.duplicate(currentTab.id); return "Tab duplicated.";
+        case 'mute': await chrome.tabs.update(currentTab.id, { muted: true }); return "Tab muted.";
+        case 'unmute': await chrome.tabs.update(currentTab.id, { muted: false }); return "Tab unmuted.";
+        case 'pin': await chrome.tabs.update(currentTab.id, { pinned: true }); return "Tab pinned.";
+        case 'unpin': await chrome.tabs.update(currentTab.id, { pinned: false }); return "Tab unpinned.";
+        case 'reload': await chrome.tabs.reload(currentTab.id); return "Tab reloaded.";
+        case 'new': await chrome.tabs.create({ url: param || 'https://www.google.com' }); return `Opened new tab${param ? ` with ${param}` : ''}.`;
+        default: return "Command not recognised.";
     }
 }
 
-// ---------- Voice command processing (global) ----------
+// ---------- Math evaluator ----------
+function safeMathEvaluate(expr) {
+    expr = expr.replace(/\s/g, '');
+    if (!/^[0-9+\-*/().]+$/.test(expr)) return null;
+    try {
+        const result = Function('"use strict"; return (' + expr + ')')();
+        if (typeof result === 'number' && isFinite(result)) return result;
+        return null;
+    } catch { return null; }
+}
+
+// ---------- Process voice command from offscreen ----------
 async function processVoiceCommand(transcript) {
     const lower = transcript.toLowerCase().trim();
     
-    // Local commands (fast)
+    // Local commands
     if (lower.includes('time')) {
-        const now = new Date();
-        const timeStr = now.toLocaleTimeString();
-        speakText(`The time is ${timeStr}.`);
+        speakText(`The time is ${new Date().toLocaleTimeString()}.`);
         return;
     }
     if (lower.includes('date')) {
-        const now = new Date();
-        const dateStr = now.toLocaleDateString();
-        speakText(`Today is ${dateStr}.`);
+        speakText(`Today is ${new Date().toLocaleDateString()}.`);
         return;
     }
     if (lower.match(/^\d+[\+\-\*\/]\d+/)) {
@@ -159,117 +129,75 @@ async function processVoiceCommand(transcript) {
         speakText(cleanText(summary));
         return;
     }
-    if (lower.includes('close tab')) {
-        const msg = await handleTabCommand('close');
-        speakText(msg);
-        return;
-    }
-    if (lower.includes('duplicate tab')) {
-        const msg = await handleTabCommand('duplicate');
-        speakText(msg);
-        return;
-    }
-    if (lower.includes('mute tab')) {
-        const msg = await handleTabCommand('mute');
-        speakText(msg);
-        return;
-    }
-    if (lower.includes('unmute tab')) {
-        const msg = await handleTabCommand('unmute');
-        speakText(msg);
-        return;
-    }
+    if (lower.includes('close tab')) { speakText(await handleTabCommand('close')); return; }
+    if (lower.includes('duplicate tab')) { speakText(await handleTabCommand('duplicate')); return; }
+    if (lower.includes('mute tab')) { speakText(await handleTabCommand('mute')); return; }
+    if (lower.includes('unmute tab')) { speakText(await handleTabCommand('unmute')); return; }
     if (lower.includes('new tab')) {
         let url = '';
         const match = lower.match(/new tab (.*)/);
         if (match) url = match[1].trim();
-        const msg = await handleTabCommand('new', url);
-        speakText(msg);
+        speakText(await handleTabCommand('new', url));
         return;
     }
     if (lower.startsWith('open ')) {
         const site = lower.slice(5).trim();
-        let url;
-        if (site.includes('.')) url = `https://${site}`;
-        else url = `https://www.google.com/search?q=${encodeURIComponent(site)}`;
+        const url = site.includes('.') ? `https://${site}` : `https://www.google.com/search?q=${encodeURIComponent(site)}`;
         await chrome.tabs.create({ url });
         speakText(`Opening ${site}.`);
         return;
     }
     
-    // Fallback to AI for general conversation
-    const aiResponse = await askAI(`You are Zara, a helpful assistant. The user said: "${transcript}". Respond naturally in plain English, short and friendly. No emojis. No special characters.`);
+    // Fallback to AI
+    const aiResponse = await askAI(`You are Zara. User: "${transcript}". Reply naturally, no emojis, short.`);
     speakText(cleanText(aiResponse));
 }
 
-// ---------- Math evaluator (safe) ----------
-function safeMathEvaluate(expr) {
-    expr = expr.replace(/\s/g, '');
-    if (!/^[0-9+\-*/().]+$/.test(expr)) return null;
-    try {
-        const result = Function('"use strict"; return (' + expr + ')')();
-        if (typeof result === 'number' && isFinite(result)) return result;
-        return null;
-    } catch { return null; }
+// ---------- Offscreen management ----------
+async function createOffscreen() {
+    if (offscreenCreated) return;
+    await chrome.offscreen.createDocument({
+        url: 'offscreen.html',
+        reasons: ['USER_MEDIA'],
+        justification: 'Continuous voice recognition'
+    });
+    offscreenCreated = true;
 }
 
-// ---------- Speech recognition (global, continuous) ----------
-function initSpeechRecognition() {
-    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-        console.log("Speech recognition not supported.");
-        return null;
+async function closeOffscreen() {
+    if (!offscreenCreated) return;
+    await chrome.offscreen.closeDocument();
+    offscreenCreated = false;
+}
+
+// Listen for commands from popup or offscreen
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (msg.type === 'voiceCommand') {
+        processVoiceCommand(msg.text);
+        sendResponse({ status: 'ok' });
     }
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const recog = new SpeechRecognition();
-    recog.continuous = true;
-    recog.interimResults = false;
-    recog.lang = 'en-US';
-
-    recog.onstart = () => {
-        isListening = true;
-        console.log("Global listening started.");
-    };
-    recog.onend = () => {
-        isListening = false;
-        if (continuousMode && !isSpeaking) {
-            setTimeout(() => { try { recog.start(); } catch(e) {} }, 500);
-        }
-    };
-    recog.onresult = (event) => {
-        const transcript = event.results[event.results.length-1][0].transcript;
-        console.log("Heard:", transcript);
-        processVoiceCommand(transcript);
-    };
-    recog.onerror = (e) => {
-        console.log("Speech error:", e.error);
-        isListening = false;
-    };
-    return recog;
-}
-
-function startGlobalListening() {
-    if (!recognition) recognition = initSpeechRecognition();
-    if (recognition && !isListening) recognition.start();
-}
-
-// Start listening when background loads (if API key exists)
-chrome.storage.local.get(['zara_openrouter_key'], (result) => {
-    if (result.zara_openrouter_key) {
-        continuousMode = true;
-        startGlobalListening();
+    if (msg.type === 'startListening') {
+        if (openRouterApiKey && continuousMode) createOffscreen();
+        sendResponse({ status: 'ok' });
+    }
+    if (msg.type === 'stopListening') {
+        closeOffscreen();
+        sendResponse({ status: 'ok' });
+    }
+    if (msg.type === 'updateSettings') {
+        loadSettings();
+        if (continuousMode && openRouterApiKey) createOffscreen();
+        else closeOffscreen();
+        sendResponse({ status: 'ok' });
     }
 });
 
-// Listen for storage changes to start listening when key added
-chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local' && changes.zara_openrouter_key) {
-        if (changes.zara_openrouter_key.newValue && !isListening) {
-            startGlobalListening();
-        }
+// Auto-start if API key exists and continuous mode on
+chrome.storage.local.get(['zara_openrouter_key', 'continuousMode'], async (res) => {
+    if (res.zara_openrouter_key && res.continuousMode !== false) {
+        await createOffscreen();
     }
 });
 
-// Keep service worker alive (periodic ping)
-setInterval(() => {
-    console.log("Zara background alive");
-}, 20000);
+// Keep service worker alive
+setInterval(() => console.log("Background alive"), 20000);
