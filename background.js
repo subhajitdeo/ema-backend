@@ -1,10 +1,7 @@
 // ==================== FIXED BACKGROUND SERVICE WORKER ====================
-// No direct DOM access, safe math evaluator, clean code.
-
 let openRouterApiKey = '';
 let model = 'ring-2.6-1t:free';
 let continuousMode = true;
-let offscreenCreated = false;
 
 // Load settings
 async function loadSettings() {
@@ -26,7 +23,7 @@ function cleanText(text) {
     return text.replace(/[^\w\s.,!?;:()-]/g, '').replace(/\s+/g, ' ').trim();
 }
 
-// ---------- Safe math evaluator (no Function, no eval) ----------
+// ---------- Safe math evaluator ----------
 function safeMathEvaluate(expr) {
     expr = expr.replace(/\s/g, '');
     if (!/^[0-9+\-*/().]+$/.test(expr)) return null;
@@ -87,17 +84,14 @@ function safeMathEvaluate(expr) {
     return (typeof final === 'number' && isFinite(final)) ? final : null;
 }
 
-// ---------- Summarise current page (via content script) ----------
+// ---------- Summarise current page ----------
 async function summariseCurrentPage() {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab) return "No active tab found.";
     try {
         const result = await chrome.scripting.executeScript({
             target: { tabId: tab.id },
-            func: () => {
-                const bodyText = document.body.innerText || '';
-                return bodyText.substring(0, 3000);
-            }
+            func: () => document.body.innerText?.substring(0, 3000) || ''
         });
         const pageText = result[0]?.result || '';
         if (!pageText) return "Could not read page content.";
@@ -149,7 +143,7 @@ async function handleTabCommand(command, param = '') {
     }
 }
 
-// ---------- Process voice command from offscreen ----------
+// ---------- Process voice command ----------
 async function processVoiceCommand(transcript) {
     const lower = transcript.toLowerCase().trim();
 
@@ -161,7 +155,6 @@ async function processVoiceCommand(transcript) {
         speakText(`Today is ${new Date().toLocaleDateString()}.`);
         return;
     }
-    // Math detection
     if (/^[\d+\-*/().\s]+$/.test(lower)) {
         const result = safeMathEvaluate(lower);
         if (result !== null) speakText(`${lower} equals ${result}`);
@@ -191,52 +184,80 @@ async function processVoiceCommand(transcript) {
         return;
     }
 
-    // Fallback to AI
     const aiResponse = await askAI(`You are Zara. User: "${transcript}". Reply naturally, no emojis, short.`);
     speakText(cleanText(aiResponse));
 }
 
-// ---------- Offscreen management ----------
+// ---------- Offscreen document management (fixed) ----------
+async function offscreenDocumentExists() {
+    const contexts = await chrome.runtime.getContexts({
+        contextTypes: ['OFFSCREEN_DOCUMENT']
+    });
+    return contexts.length > 0;
+}
+
 async function createOffscreen() {
-    if (offscreenCreated) return;
+    const exists = await offscreenDocumentExists();
+    if (exists) return;
     await chrome.offscreen.createDocument({
         url: 'offscreen.html',
         reasons: ['USER_MEDIA'],
         justification: 'Continuous voice recognition'
     });
-    offscreenCreated = true;
+    // After creation, tell offscreen to start listening if conditions are met
+    if (openRouterApiKey && continuousMode) {
+        await sendToOffscreen({ type: 'startListening', continuousMode });
+    }
 }
 
 async function closeOffscreen() {
-    if (!offscreenCreated) return;
+    const exists = await offscreenDocumentExists();
+    if (!exists) return;
     await chrome.offscreen.closeDocument();
-    offscreenCreated = false;
 }
 
-// Listen for commands from popup or offscreen
+async function sendToOffscreen(message) {
+    const exists = await offscreenDocumentExists();
+    if (!exists) return;
+    chrome.runtime.sendMessage(message);
+}
+
+// ---------- Handle recognition end from offscreen ----------
+async function onRecognitionEnded() {
+    if (continuousMode && openRouterApiKey) {
+        await sendToOffscreen({ type: 'startListening', continuousMode });
+    }
+}
+
+// ---------- Message handling ----------
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.type === 'voiceCommand') {
         processVoiceCommand(msg.text);
         sendResponse({ status: 'ok' });
     }
-    if (msg.type === 'startListening') {
+    else if (msg.type === 'recognitionEnded') {
+        onRecognitionEnded();
+        sendResponse({ status: 'ok' });
+    }
+    else if (msg.type === 'startListening') {
         if (openRouterApiKey && continuousMode) createOffscreen();
         sendResponse({ status: 'ok' });
     }
-    if (msg.type === 'stopListening') {
+    else if (msg.type === 'stopListening') {
         closeOffscreen();
         sendResponse({ status: 'ok' });
     }
-    if (msg.type === 'updateSettings') {
-        loadSettings();
-        if (continuousMode && openRouterApiKey) createOffscreen();
-        else closeOffscreen();
+    else if (msg.type === 'updateSettings') {
+        loadSettings().then(() => {
+            if (continuousMode && openRouterApiKey) createOffscreen();
+            else closeOffscreen();
+        });
         sendResponse({ status: 'ok' });
     }
-    return true; // Keep channel open for async response
+    return true;
 });
 
-// Auto-start if API key exists and continuous mode on
+// Auto-start on service worker load
 chrome.storage.local.get(['zara_openrouter_key', 'continuousMode'], async (res) => {
     if (res.zara_openrouter_key && res.continuousMode !== false) {
         await createOffscreen();
