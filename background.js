@@ -1,203 +1,86 @@
-// ==================== BACKGROUND SERVICE WORKER (no speech recognition) ====================
-// Manages tabs, AI, summarisation, and speaks via chrome.tts.
-// Receives voice commands from offscreen document.
+// popup.js – settings + chat interface
 
-let openRouterApiKey = '';
-let model = 'ring-2.6-1t:free';
-let continuousMode = true;
-let offscreenCreated = false;
+document.addEventListener('DOMContentLoaded', async () => {
+    const apiKeyInput = document.getElementById('apiKeyInput');
+    const saveBtn = document.getElementById('saveApiKeyBtn');
+    const modelSelect = document.getElementById('modelSelect');
+    const continuousToggle = document.getElementById('continuousModeToggle');
+    const userInput = document.getElementById('userInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const chatMessages = document.getElementById('chatMessages');
 
-// Load settings
-async function loadSettings() {
+    // ---------- Load saved settings ----------
     const result = await chrome.storage.local.get(['zara_openrouter_key', 'zara_selected_model', 'continuousMode']);
-    openRouterApiKey = result.zara_openrouter_key || '';
-    model = result.zara_selected_model || 'ring-2.6-1t:free';
-    continuousMode = result.continuousMode !== undefined ? result.continuousMode : true;
-}
-loadSettings();
+    if (result.zara_openrouter_key) apiKeyInput.value = result.zara_openrouter_key;
+    if (result.zara_selected_model) modelSelect.value = result.zara_selected_model;
+    if (result.continuousMode !== undefined) continuousToggle.checked = result.continuousMode;
 
-// ---------- Speak using chrome.tts (works in background) ----------
-function speakText(text) {
-    let cleanText = text.replace(/[^\w\s.,!?;:()-]/g, '').replace(/\s+/g, ' ').trim();
-    if (!cleanText) return;
-    chrome.tts.speak(cleanText, {
-        rate: 0.9,
-        pitch: 1.0,
-        lang: 'en-GB',
-        voiceName: 'Google UK English Female'
+    // ---------- Save settings and notify background ----------
+    saveBtn.addEventListener('click', async () => {
+        let newKey = apiKeyInput.value.trim();
+        if (!newKey.startsWith('sk-or-')) {
+            alert('Invalid OpenRouter key (must start with sk-or-)');
+            return;
+        }
+        await chrome.storage.local.set({ zara_openrouter_key: newKey });
+        alert('API key saved. Background will restart listening.');
+        chrome.runtime.sendMessage({ type: 'updateSettings' });
     });
-}
 
-// ---------- Clean text ----------
-function cleanText(text) {
-    return text.replace(/[^\w\s.,!?;:()-]/g, '').replace(/\s+/g, ' ').trim();
-}
-
-// ---------- Summarise current page (via content script) ----------
-async function summariseCurrentPage() {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab) return "No active tab found.";
-    try {
-        const result = await chrome.scripting.executeScript({
-            target: { tabId: tab.id },
-            func: () => {
-                const bodyText = document.body.innerText || '';
-                return bodyText.substring(0, 3000);
-            }
-        });
-        const pageText = result[0]?.result || '';
-        if (!pageText) return "Could not read page content.";
-        const summary = await askAI(`Summarise this page in 3 short sentences:\n${pageText}`);
-        return summary;
-    } catch (e) {
-        return "Error reading page.";
-    }
-}
-
-// ---------- Ask AI ----------
-async function askAI(prompt) {
-    if (!openRouterApiKey) return "API key missing.";
-    try {
-        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${openRouterApiKey}`,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                model: model,
-                messages: [{ role: "user", content: prompt }],
-                temperature: 0.7,
-                max_tokens: 500
-            })
-        });
-        const data = await response.json();
-        return data.choices?.[0]?.message?.content || "No response.";
-    } catch (e) {
-        return "AI error.";
-    }
-}
-
-// ---------- Tab control ----------
-async function handleTabCommand(command, param = '') {
-    const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!currentTab) return "No active tab.";
-    switch (command) {
-        case 'close': await chrome.tabs.remove(currentTab.id); return "Tab closed.";
-        case 'duplicate': await chrome.tabs.duplicate(currentTab.id); return "Tab duplicated.";
-        case 'mute': await chrome.tabs.update(currentTab.id, { muted: true }); return "Tab muted.";
-        case 'unmute': await chrome.tabs.update(currentTab.id, { muted: false }); return "Tab unmuted.";
-        case 'pin': await chrome.tabs.update(currentTab.id, { pinned: true }); return "Tab pinned.";
-        case 'unpin': await chrome.tabs.update(currentTab.id, { pinned: false }); return "Tab unpinned.";
-        case 'reload': await chrome.tabs.reload(currentTab.id); return "Tab reloaded.";
-        case 'new': await chrome.tabs.create({ url: param || 'https://www.google.com' }); return `Opened new tab${param ? ` with ${param}` : ''}.`;
-        default: return "Command not recognised.";
-    }
-}
-
-// ---------- Math evaluator ----------
-function safeMathEvaluate(expr) {
-    expr = expr.replace(/\s/g, '');
-    if (!/^[0-9+\-*/().]+$/.test(expr)) return null;
-    try {
-        const result = Function('"use strict"; return (' + expr + ')')();
-        if (typeof result === 'number' && isFinite(result)) return result;
-        return null;
-    } catch { return null; }
-}
-
-// ---------- Process voice command from offscreen ----------
-async function processVoiceCommand(transcript) {
-    const lower = transcript.toLowerCase().trim();
-    
-    // Local commands
-    if (lower.includes('time')) {
-        speakText(`The time is ${new Date().toLocaleTimeString()}.`);
-        return;
-    }
-    if (lower.includes('date')) {
-        speakText(`Today is ${new Date().toLocaleDateString()}.`);
-        return;
-    }
-    if (lower.match(/^\d+[\+\-\*\/]\d+/)) {
-        const result = safeMathEvaluate(lower);
-        if (result !== null) speakText(`${lower} equals ${result}`);
-        return;
-    }
-    if (lower.includes('summarise') || lower.includes('summarize') || lower.includes('read this page')) {
-        const summary = await summariseCurrentPage();
-        speakText(cleanText(summary));
-        return;
-    }
-    if (lower.includes('close tab')) { speakText(await handleTabCommand('close')); return; }
-    if (lower.includes('duplicate tab')) { speakText(await handleTabCommand('duplicate')); return; }
-    if (lower.includes('mute tab')) { speakText(await handleTabCommand('mute')); return; }
-    if (lower.includes('unmute tab')) { speakText(await handleTabCommand('unmute')); return; }
-    if (lower.includes('new tab')) {
-        let url = '';
-        const match = lower.match(/new tab (.*)/);
-        if (match) url = match[1].trim();
-        speakText(await handleTabCommand('new', url));
-        return;
-    }
-    if (lower.startsWith('open ')) {
-        const site = lower.slice(5).trim();
-        const url = site.includes('.') ? `https://${site}` : `https://www.google.com/search?q=${encodeURIComponent(site)}`;
-        await chrome.tabs.create({ url });
-        speakText(`Opening ${site}.`);
-        return;
-    }
-    
-    // Fallback to AI
-    const aiResponse = await askAI(`You are Zara. User: "${transcript}". Reply naturally, no emojis, short.`);
-    speakText(cleanText(aiResponse));
-}
-
-// ---------- Offscreen management ----------
-async function createOffscreen() {
-    if (offscreenCreated) return;
-    await chrome.offscreen.createDocument({
-        url: 'offscreen.html',
-        reasons: ['USER_MEDIA'],
-        justification: 'Continuous voice recognition'
+    modelSelect.addEventListener('change', async () => {
+        await chrome.storage.local.set({ zara_selected_model: modelSelect.value });
+        chrome.runtime.sendMessage({ type: 'updateSettings' });
     });
-    offscreenCreated = true;
-}
 
-async function closeOffscreen() {
-    if (!offscreenCreated) return;
-    await chrome.offscreen.closeDocument();
-    offscreenCreated = false;
-}
+    continuousToggle.addEventListener('change', async () => {
+        await chrome.storage.local.set({ continuousMode: continuousToggle.checked });
+        chrome.runtime.sendMessage({ type: 'updateSettings' });
+    });
 
-// Listen for commands from popup or offscreen
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-    if (msg.type === 'voiceCommand') {
-        processVoiceCommand(msg.text);
-        sendResponse({ status: 'ok' });
+    // ---------- Add message to chat UI ----------
+    function addMessage(text, isUser = false) {
+        const msgDiv = document.createElement('div');
+        msgDiv.className = `message ${isUser ? 'user' : 'assistant'}`;
+        msgDiv.textContent = text;
+        chatMessages.appendChild(msgDiv);
+        msgDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
-    if (msg.type === 'startListening') {
-        if (openRouterApiKey && continuousMode) createOffscreen();
-        sendResponse({ status: 'ok' });
+
+    // ---------- Send typed message to background (same as voice command) ----------
+    async function sendTypedMessage(text) {
+        if (!text.trim()) return;
+        addMessage(text, true);
+        userInput.value = '';
+
+        // Show thinking indicator
+        const thinkingMsg = document.createElement('div');
+        thinkingMsg.className = 'message assistant thinking';
+        thinkingMsg.textContent = 'Zara is thinking...';
+        chatMessages.appendChild(thinkingMsg);
+        thinkingMsg.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+        // Send to background as voiceCommand (background will process and speak)
+        chrome.runtime.sendMessage({ type: 'voiceCommand', text: text }, (response) => {
+            thinkingMsg.remove();
+            // Response will come as speech, but we don't get text back directly.
+            // We could listen for background responses, but for simplicity,
+            // we rely on the background to speak. The user will hear the answer.
+            // To also show the answer in chat, we'd need a separate message channel.
+            // For now, we just show a generic "Response spoken" indicator.
+            const spokenMsg = document.createElement('div');
+            spokenMsg.className = 'message assistant';
+            spokenMsg.textContent = 'Response spoken.';
+            chatMessages.appendChild(spokenMsg);
+            spokenMsg.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            setTimeout(() => spokenMsg.remove(), 3000);
+        });
     }
-    if (msg.type === 'stopListening') {
-        closeOffscreen();
-        sendResponse({ status: 'ok' });
-    }
-    if (msg.type === 'updateSettings') {
-        loadSettings();
-        if (continuousMode && openRouterApiKey) createOffscreen();
-        else closeOffscreen();
-        sendResponse({ status: 'ok' });
-    }
+
+    sendBtn.addEventListener('click', () => sendTypedMessage(userInput.value));
+    userInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') sendTypedMessage(userInput.value);
+    });
+
+    // Optional: listen for responses from background if we want to show text
+    // But background currently only speaks, doesn't send back. Can be added later.
 });
-
-// Auto-start if API key exists and continuous mode on
-chrome.storage.local.get(['zara_openrouter_key', 'continuousMode'], async (res) => {
-    if (res.zara_openrouter_key && res.continuousMode !== false) {
-        await createOffscreen();
-    }
-});
-
-// Keep service worker alive
-setInterval(() => console.log("Background alive"), 20000);
