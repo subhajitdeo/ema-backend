@@ -10,7 +10,8 @@
     "alarms",
     "notifications",
     "scripting",
-    "offscreen"
+    "offscreen",
+    "tts"
   ],
   "host_permissions": [
     "https://openrouter.ai/*",
