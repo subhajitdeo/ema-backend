@@ -23,6 +23,6 @@
     "128": "icon128.png"
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self' 'wasm-unsafe-eval' https://cdn.jsdelivr.net; object-src 'self'"
+    "extension_pages": "script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net; object-src 'self'"
   }
 }
