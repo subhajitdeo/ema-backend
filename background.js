@@ -1,14 +1,13 @@
-// ==================== FIXED BACKGROUND SERVICE WORKER ====================
+// background.js – handles tab commands, AI, TTS, summarisation. No offscreen, no continuous listening.
+
 let openRouterApiKey = '';
 let model = 'ring-2.6-1t:free';
-let continuousMode = true;
 
 // Load settings
 async function loadSettings() {
-    const result = await chrome.storage.local.get(['zara_openrouter_key', 'zara_selected_model', 'continuousMode']);
+    const result = await chrome.storage.local.get(['zara_openrouter_key', 'zara_selected_model']);
     openRouterApiKey = result.zara_openrouter_key || '';
     model = result.zara_selected_model || 'ring-2.6-1t:free';
-    continuousMode = result.continuousMode !== undefined ? result.continuousMode : true;
 }
 loadSettings();
 
@@ -143,124 +142,89 @@ async function handleTabCommand(command, param = '') {
     }
 }
 
-// ---------- Process voice command ----------
-async function processVoiceCommand(transcript) {
+// ---------- Process command (called from popup) ----------
+async function processCommand(transcript, sendResponseToPopup) {
     const lower = transcript.toLowerCase().trim();
 
+    // Time
     if (lower.includes('time')) {
-        speakText(`The time is ${new Date().toLocaleTimeString()}.`);
+        const answer = `The time is ${new Date().toLocaleTimeString()}.`;
+        speakText(answer);
+        sendResponseToPopup(answer);
         return;
     }
+    // Date
     if (lower.includes('date')) {
-        speakText(`Today is ${new Date().toLocaleDateString()}.`);
+        const answer = `Today is ${new Date().toLocaleDateString()}.`;
+        speakText(answer);
+        sendResponseToPopup(answer);
         return;
     }
+    // Math
     if (/^[\d+\-*/().\s]+$/.test(lower)) {
         const result = safeMathEvaluate(lower);
-        if (result !== null) speakText(`${lower} equals ${result}`);
-        return;
+        if (result !== null) {
+            const answer = `${lower} equals ${result}`;
+            speakText(answer);
+            sendResponseToPopup(answer);
+            return;
+        }
     }
+    // Summarise
     if (lower.includes('summarise') || lower.includes('summarize') || lower.includes('read this page')) {
         const summary = await summariseCurrentPage();
-        speakText(cleanText(summary));
+        const clean = cleanText(summary);
+        speakText(clean);
+        sendResponseToPopup(clean);
         return;
     }
-    if (lower.includes('close tab')) { speakText(await handleTabCommand('close')); return; }
-    if (lower.includes('duplicate tab')) { speakText(await handleTabCommand('duplicate')); return; }
-    if (lower.includes('mute tab')) { speakText(await handleTabCommand('mute')); return; }
-    if (lower.includes('unmute tab')) { speakText(await handleTabCommand('unmute')); return; }
+    // Tab commands
+    if (lower.includes('close tab')) { const answer = await handleTabCommand('close'); speakText(answer); sendResponseToPopup(answer); return; }
+    if (lower.includes('duplicate tab')) { const answer = await handleTabCommand('duplicate'); speakText(answer); sendResponseToPopup(answer); return; }
+    if (lower.includes('mute tab')) { const answer = await handleTabCommand('mute'); speakText(answer); sendResponseToPopup(answer); return; }
+    if (lower.includes('unmute tab')) { const answer = await handleTabCommand('unmute'); speakText(answer); sendResponseToPopup(answer); return; }
+    if (lower.includes('pin tab')) { const answer = await handleTabCommand('pin'); speakText(answer); sendResponseToPopup(answer); return; }
+    if (lower.includes('unpin tab')) { const answer = await handleTabCommand('unpin'); speakText(answer); sendResponseToPopup(answer); return; }
+    if (lower.includes('reload tab')) { const answer = await handleTabCommand('reload'); speakText(answer); sendResponseToPopup(answer); return; }
     if (lower.includes('new tab')) {
         let url = '';
         const match = lower.match(/new tab (.*)/);
         if (match) url = match[1].trim();
-        speakText(await handleTabCommand('new', url));
+        const answer = await handleTabCommand('new', url);
+        speakText(answer);
+        sendResponseToPopup(answer);
         return;
     }
     if (lower.startsWith('open ')) {
         const site = lower.slice(5).trim();
         const url = site.includes('.') ? `https://${site}` : `https://www.google.com/search?q=${encodeURIComponent(site)}`;
         await chrome.tabs.create({ url });
-        speakText(`Opening ${site}.`);
+        const answer = `Opening ${site}.`;
+        speakText(answer);
+        sendResponseToPopup(answer);
         return;
     }
 
+    // Fallback to AI
     const aiResponse = await askAI(`You are Zara. User: "${transcript}". Reply naturally, no emojis, short.`);
-    speakText(cleanText(aiResponse));
+    const clean = cleanText(aiResponse);
+    speakText(clean);
+    sendResponseToPopup(clean);
 }
 
-// ---------- Offscreen document management (fixed) ----------
-async function offscreenDocumentExists() {
-    const contexts = await chrome.runtime.getContexts({
-        contextTypes: ['OFFSCREEN_DOCUMENT']
-    });
-    return contexts.length > 0;
-}
-
-async function createOffscreen() {
-    const exists = await offscreenDocumentExists();
-    if (exists) return;
-    await chrome.offscreen.createDocument({
-        url: 'offscreen.html',
-        reasons: ['USER_MEDIA'],
-        justification: 'Continuous voice recognition'
-    });
-    // After creation, tell offscreen to start listening if conditions are met
-    if (openRouterApiKey && continuousMode) {
-        await sendToOffscreen({ type: 'startListening', continuousMode });
-    }
-}
-
-async function closeOffscreen() {
-    const exists = await offscreenDocumentExists();
-    if (!exists) return;
-    await chrome.offscreen.closeDocument();
-}
-
-async function sendToOffscreen(message) {
-    const exists = await offscreenDocumentExists();
-    if (!exists) return;
-    chrome.runtime.sendMessage(message);
-}
-
-// ---------- Handle recognition end from offscreen ----------
-async function onRecognitionEnded() {
-    if (continuousMode && openRouterApiKey) {
-        await sendToOffscreen({ type: 'startListening', continuousMode });
-    }
-}
-
-// ---------- Message handling ----------
+// Listen for messages from popup
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-    if (msg.type === 'voiceCommand') {
-        processVoiceCommand(msg.text);
-        sendResponse({ status: 'ok' });
-    }
-    else if (msg.type === 'recognitionEnded') {
-        onRecognitionEnded();
-        sendResponse({ status: 'ok' });
-    }
-    else if (msg.type === 'startListening') {
-        if (openRouterApiKey && continuousMode) createOffscreen();
-        sendResponse({ status: 'ok' });
-    }
-    else if (msg.type === 'stopListening') {
-        closeOffscreen();
-        sendResponse({ status: 'ok' });
-    }
-    else if (msg.type === 'updateSettings') {
-        loadSettings().then(() => {
-            if (continuousMode && openRouterApiKey) createOffscreen();
-            else closeOffscreen();
+    if (msg.type === 'processCommand') {
+        processCommand(msg.text, (answer) => {
+            sendResponse({ answer: answer });
         });
-        sendResponse({ status: 'ok' });
+        return true; // Keep channel open for async response
     }
-    return true;
-});
-
-// Auto-start on service worker load
-chrome.storage.local.get(['zara_openrouter_key', 'continuousMode'], async (res) => {
-    if (res.zara_openrouter_key && res.continuousMode !== false) {
-        await createOffscreen();
+    if (msg.type === 'updateSettings') {
+        loadSettings().then(() => {
+            sendResponse({ status: 'ok' });
+        });
+        return true;
     }
 });
 
