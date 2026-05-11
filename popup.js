@@ -1,4 +1,4 @@
-// popup.js – manage API key, model, continuous mode
+// popup.js – manages settings and notifies background
 
 document.addEventListener('DOMContentLoaded', async () => {
     const apiKeyInput = document.getElementById('apiKeyInput');
@@ -7,30 +7,29 @@ document.addEventListener('DOMContentLoaded', async () => {
     const continuousToggle = document.getElementById('continuousModeToggle');
 
     // Load saved values
-    const result = await chrome.storage.local.get(['zara_openrouter_key', 'zara_selected_model', 'zara_continuous_mode']);
+    const result = await chrome.storage.local.get(['zara_openrouter_key', 'zara_selected_model', 'continuousMode']);
     if (result.zara_openrouter_key) apiKeyInput.value = result.zara_openrouter_key;
     if (result.zara_selected_model) modelSelect.value = result.zara_selected_model;
-    if (result.zara_continuous_mode !== undefined) continuousToggle.checked = result.zara_continuous_mode;
+    if (result.continuousMode !== undefined) continuousToggle.checked = result.continuousMode;
 
     saveBtn.addEventListener('click', async () => {
-        const newKey = apiKeyInput.value.trim();
+        let newKey = apiKeyInput.value.trim();
         if (!newKey.startsWith('sk-or-')) {
             alert('Invalid OpenRouter key (must start with sk-or-)');
             return;
         }
         await chrome.storage.local.set({ zara_openrouter_key: newKey });
-        alert('API key saved. Background will start listening.');
-        // Reload background to start listening
-        chrome.runtime.reload();
+        alert('API key saved. Background will restart listening.');
+        chrome.runtime.sendMessage({ type: 'updateSettings' });
     });
 
     modelSelect.addEventListener('change', async () => {
         await chrome.storage.local.set({ zara_selected_model: modelSelect.value });
+        chrome.runtime.sendMessage({ type: 'updateSettings' });
     });
 
     continuousToggle.addEventListener('change', async () => {
-        await chrome.storage.local.set({ zara_continuous_mode: continuousToggle.checked });
-        // Notify background script
-        chrome.runtime.sendMessage({ type: 'toggleContinuous', enabled: continuousToggle.checked });
+        await chrome.storage.local.set({ continuousMode: continuousToggle.checked });
+        chrome.runtime.sendMessage({ type: 'updateSettings' });
     });
 });
