@@ -3,16 +3,14 @@
   "name": "Zara.ai - Futuristic AI Assistant",
   "version": "1.0.0",
   "description": "Voice‑enabled AI assistant with memory, tools, and Google UK voice.",
-  "permissions": [
-    "storage"
-  ],
+  "permissions": ["storage"],
   "host_permissions": [
     "https://openrouter.ai/*",
     "https://api.open-meteo.com/*",
     "https://geocoding-api.open-meteo.com/*"
   ],
   "action": {
-    "default_popup": "index.html",
+    "default_popup": "popup.html",
     "default_icon": {
       "16": "icon16.png",
       "48": "icon48.png",
@@ -25,7 +23,6 @@
     "128": "icon128.png"
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval' https://cdn.jsdelivr.net; object-src 'self'"
   }
 }
-
