@@ -2,14 +2,15 @@
   "manifest_version": 3,
   "name": "Zara AI - Ultimate Assistant",
   "version": "2.0.0",
-  "description": "JARVIS-like assistant. Always listening, reads pages, controls tabs, remembers you.",
+  "description": "JARVIS-like assistant. Always listening, reads pages, controls tabs.",
   "permissions": [
     "storage",
     "activeTab",
     "tabs",
     "alarms",
     "notifications",
-    "scripting"
+    "scripting",
+    "offscreen"
   ],
   "host_permissions": [
     "https://openrouter.ai/*",
