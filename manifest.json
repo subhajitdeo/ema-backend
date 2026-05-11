@@ -1,18 +1,33 @@
 {
   "manifest_version": 3,
-  "name": "Zara.ai - Futuristic AI Assistant",
-  "version": "1.0.0",
-  "description": "Voice‑enabled AI assistant with memory, tools, and Google UK voice.",
-  "permissions": ["storage"],
+  "name": "Zara AI - Ultimate Assistant",
+  "version": "2.0.0",
+  "description": "JARVIS-like assistant. Always listening, reads pages, controls tabs, remembers you.",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "tabs",
+    "alarms",
+    "notifications",
+    "scripting"
+  ],
   "host_permissions": [
     "https://openrouter.ai/*",
     "https://api.open-meteo.com/*",
-    "https://geocoding-api.open-meteo.com/*"
+    "https://geocoding-api.open-meteo.com/*",
+    "<all_urls>"
   ],
   "background": {
     "service_worker": "background.js"
   },
   "action": {
     "default_popup": "popup.html"
-  }
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
 }
