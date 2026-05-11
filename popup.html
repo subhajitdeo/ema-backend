@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Zara AI - Settings & Chat</title>
+    <title>Zara AI - Voice & Typing Assistant</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <link rel="stylesheet" href="style.css">
@@ -14,7 +14,7 @@
         <div class="header">
             <div class="title-area">
                 <h1>ZARA<span>.ai</span></h1>
-                <p>background active • always listening</p>
+                <p>Press Ctrl+Shift+Z to open • Speak or type</p>
             </div>
         </div>
 
@@ -34,17 +34,20 @@
                     <option value="meta-llama/llama-3.3-70b-instruct:free">Llama 3.3</option>
                 </select>
             </div>
-            <div class="continuous-toggle">
-                <label>
-                    <input type="checkbox" id="continuousModeToggle" checked> Continuous Listening
-                </label>
-            </div>
+        </div>
+
+        <!-- Voice Button & Status -->
+        <div class="voice-section">
+            <button id="voiceBtn" class="voice-btn">
+                <i class="fas fa-microphone"></i> Click to Speak
+            </button>
+            <div id="voiceStatus" class="voice-status idle">⚪ Ready</div>
         </div>
 
         <!-- Chat Section -->
         <div class="chat-section">
             <div class="chat-messages" id="chatMessages">
-                <div class="message system">Zara is ready. Speak or type.</div>
+                <div class="message system">Zara is ready. Click the mic or type below.</div>
             </div>
             <div class="input-area">
                 <input type="text" id="userInput" placeholder="Type your message..." autocomplete="off">
@@ -52,7 +55,7 @@
             </div>
         </div>
 
-        <div class="footer-note">Voice works in background. Type here anytime.</div>
+        <div class="footer-note">Voice: one command per click. Text works anytime.</div>
     </div>
     <script src="popup.js"></script>
 </body>
