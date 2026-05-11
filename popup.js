@@ -1,4 +1,4 @@
-// ==================== ZARA POPUP SCRIPT (NO EMOJIS, SAFE MATH, GOOGLE UK VOICE) ====================
+// ==================== ZARA POPUP SCRIPT (NO EXTERNAL LIBS, SAFE MATH) ====================
 
 // ---------- DOM Elements ----------
 const chatMessages = document.getElementById('chatMessages');
@@ -77,7 +77,7 @@ function isSafeUrl(url) {
     } catch { return false; }
 }
 
-// ---------- SAFE MATH EVALUATOR (no eval, no Function) ----------
+// ---------- SAFE MATH EVALUATOR (no eval) ----------
 function safeMathEvaluate(expr) {
     expr = expr.replace(/\s/g, '');
     if (!/^[0-9+\-*/().]+$/.test(expr)) return null;
@@ -140,7 +140,14 @@ function safeMathEvaluate(expr) {
     return (typeof finalResult === 'number' && isFinite(finalResult)) ? finalResult : null;
 }
 
-// ---------- UI Helpers (with DOMPurify & emoji stripping) ----------
+// ---------- Simple HTML escape (instead of DOMPurify) ----------
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// ---------- UI Helpers (no markdown, plain text) ----------
 function renderMessage(text, isUser, toolData = null, isError = false) {
     let cleanText = text;
     if (!isUser && !isError) cleanText = stripEmojis(text);
@@ -161,8 +168,7 @@ function renderMessage(text, isUser, toolData = null, isError = false) {
     chatMessages.appendChild(messageDiv);
     const contentDiv = messageDiv.querySelector('.message-text');
     if (isUser || isError) {
-        const cleanHtml = DOMPurify.sanitize(marked.parse(cleanText));
-        contentDiv.innerHTML = cleanHtml;
+        contentDiv.innerHTML = escapeHtml(cleanText);
         messageDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     } else {
         typeText(contentDiv, cleanText, () => {
@@ -185,8 +191,7 @@ async function typeText(container, fullText, onComplete) {
             index++;
             requestAnimationFrame(addNextChunk);
         } else {
-            const cleanHtml = DOMPurify.sanitize(marked.parse(fullText));
-            container.innerHTML = cleanHtml;
+            container.innerHTML = escapeHtml(fullText);
             if (onComplete) onComplete();
         }
     }
@@ -204,7 +209,7 @@ function addMessage(text, isUser, toolData = null) {
     saveMemory();
 }
 
-// ---------- Speech with Google UK Female priority & emoji stripping ----------
+// ---------- Speech with Google UK Female priority ----------
 function speakText(text) {
     if (!synth) return;
     let cleanText = stripEmojis(text).replace(/\s+/g, ' ').trim();
@@ -235,7 +240,7 @@ function speakText(text) {
     setTimeout(() => synth.speak(utterance), 100);
 }
 
-// ---------- Weather ----------
+// ---------- Weather (unchanged) ----------
 async function fetchDetailedWeather(location) {
     try {
         const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location)}&count=1&language=en&format=json`;
@@ -258,7 +263,7 @@ async function fetchDetailedWeather(location) {
         else if (weatherCode >= 71 && weatherCode <= 77) condition = "Snow";
         else if (weatherCode >= 80 && weatherCode <= 99) condition = "Thunderstorm";
         let clothingTip = temp > 30 ? "Wear light clothes." : (temp < 10 ? "Heavy jacket needed." : "Comfortable.");
-        let umbrellaTip = rainProb > 50 ? "Bring an umbrella!" : (rainProb > 20 ? "Maybe an umbrella." : "");
+        let umbrellaTip = rainProb > 50 ? "Bring an umbrella." : (rainProb > 20 ? "Maybe an umbrella." : "");
         let travelWarning = wind > 30 ? "Strong winds – be careful." : "";
         return { summary: `${name}: ${temp}C, feels like ${feelsLike}C. Humidity ${humidity}%, wind ${wind} km/h, ${condition}. Rain chance ${rainProb}%. ${clothingTip} ${umbrellaTip} ${travelWarning}` };
     } catch(e) { return null; }
@@ -294,7 +299,7 @@ async function executeToolCommand(toolObj) {
     }
 }
 
-// ---------- Declarative Command System ----------
+// ---------- Declarative Command System (same) ----------
 const commands = [
     { pattern: /\btime\b/i, action: () => { const now = new Date(); const timeStr = now.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', second:'2-digit' }); addMessage(`The current time is ${timeStr}.`, false); speakText(`The current time is ${timeStr}.`); return true; } },
     { pattern: /\bdate\b/i, action: () => { const now = new Date(); const dateStr = now.toLocaleDateString(undefined, { weekday:'long', year:'numeric', month:'long', day:'numeric' }); addMessage(`Today is ${dateStr}.`, false); speakText(`Today is ${dateStr}.`); return true; } },
@@ -318,7 +323,7 @@ function handleLocalCommand(text) {
     return false;
 }
 
-// ---------- Robust JSON extraction (balanced braces) ----------
+// ---------- Robust JSON extraction ----------
 function extractJSONObject(str) {
     let depth = 0;
     let start = -1;
@@ -334,7 +339,7 @@ function extractJSONObject(str) {
     return null;
 }
 
-// ---------- AI Call with GK detection, no-emoji system prompt ----------
+// ---------- AI Call (unchanged except no markdown) ----------
 async function askZara(userPrompt) {
     if (handleLocalCommand(userPrompt)) return;
     openRouterApiKey = localStorage.getItem('zara_openrouter_key') || '';
@@ -436,7 +441,7 @@ Important:
     }
 }
 
-// ---------- Voice Recognition ----------
+// ---------- Voice Recognition (unchanged) ----------
 function initSpeechRecognition() {
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
         addSystemMessage("Voice recognition not supported.", true);
