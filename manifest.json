@@ -9,6 +9,9 @@
     "https://api.open-meteo.com/*",
     "https://geocoding-api.open-meteo.com/*"
   ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
