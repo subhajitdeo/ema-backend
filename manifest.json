@@ -1,22 +1,18 @@
 {
   "manifest_version": 3,
   "name": "Zara AI - Ultimate Assistant",
-  "version": "2.0.0",
-  "description": "JARVIS-like assistant. Always listening, reads pages, controls tabs.",
+  "version": "3.0.0",
+  "description": "JARVIS-like assistant. Press Ctrl+Shift+Z to open, speak or type, get voice + text reply.",
   "permissions": [
     "storage",
     "activeTab",
     "tabs",
-    "alarms",
-    "notifications",
     "scripting",
-    "offscreen",
-    "tts"
+    "tts",
+    "commands"
   ],
   "host_permissions": [
     "https://openrouter.ai/*",
-    "https://api.open-meteo.com/*",
-    "https://geocoding-api.open-meteo.com/*",
     "<all_urls>"
   ],
   "background": {
@@ -31,5 +27,14 @@
       "js": ["content.js"],
       "run_at": "document_idle"
     }
-  ]
+  ],
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+Z",
+        "mac": "MacCtrl+Shift+Z"
+      },
+      "description": "Open Zara popup"
+    }
+  }
 }
