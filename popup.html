@@ -1,1 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>Zara.ai | Futuristic AI Assistant</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- DOMPurify for XSS prevention -->
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="glass-panel container">
+        <div class="header">
+            <div class="orb-container">
+                <div class="ai-orb" id="aiOrb">
+                    <div class="orb-core"></div>
+                    <div class="orb-ring"></div>
+                    <div class="pulse-ring"></div>
+                </div>
+                <div class="sound-wave" id="soundWave">
+                    <span></span><span></span><span></span><span></span><span></span>
+                </div>
+            </div>
+            <div class="title-area">
+                <h1>ZARA<span>.ai</span></h1>
+                <p>neural interface • active</p>
+            </div>
+            <div class="controls">
+                <div class="api-status">
+                    <i class="fas fa-key"></i>
+                    <input type="password" id="apiKeyInput" placeholder="OpenRouter API Key" autocomplete="off">
+                    <button id="saveApiKeyBtn" class="glass-btn small"><i class="fas fa-save"></i></button>
+                </div>
+                <div class="model-selector">
+                    <i class="fas fa-brain"></i>
+                    <select id="modelSelect">
+                        <option value="deepseek/deepseek-chat-v3-0324:free">DeepSeek (free)</option>
+                        <option value="ring-2.6-1t:free" selected>Ring-2.6-1T (free)</option>
+                        <option value="google/gemma-3-27b-it:free">Google Gemma 3 (free)</option>
+                        <option value="meta-llama/llama-3.3-70b-instruct:free">Llama 3.3 70B (free)</option>
+                    </select>
+                </div>
+            </div>
+        </div>
 
+        <div class="chat-panel" id="chatPanel">
+            <div class="chat-messages" id="chatMessages"></div>
+        </div>
+
+        <div class="thinking-indicator" id="thinkingIndicator">
+            <div class="thinking-dots"><span></span><span></span><span></span></div>
+            <span id="thinkingText">Zara is thinking...</span>
+        </div>
+
+        <div class="input-area">
+            <button id="micBtn" class="mic-btn glass-btn"><i class="fas fa-microphone"></i></button>
+            <input type="text" id="userInput" placeholder="Ask me anything..." autocomplete="off">
+            <button id="sendBtn" class="send-btn glass-btn"><i class="fas fa-paper-plane"></i></button>
+        </div>
+        <div class="voice-status" id="voiceStatus"></div>
+        
+        <div class="continuous-toggle">
+            <label class="switch-label">
+                <span class="toggle-text"><i class="fas fa-microphone-alt"></i> Continuous Mode</span>
+                <label class="switch">
+                    <input type="checkbox" id="continuousModeToggle" checked>
+                    <span class="slider round"></span>
+                </label>
+            </label>
+        </div>
+
+        <div class="footer-note">⚡ Zara • Memory enabled • Secure markdown • Typing animation</div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
