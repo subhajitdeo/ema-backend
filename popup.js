@@ -218,14 +218,6 @@ sendBtn.addEventListener('click', () => {
   handleUserInput(q);
 });
 
-micBtn.addEventListener('click', () => {
-  if (recognition) {
-    recognition.start();
-    statusSpan.innerText = '🎙️ Listening...';
-  } else {
-    statusSpan.innerText = 'Voice not supported in this browser.';
-  }
-});
 
 clearMemoryBtn.addEventListener('click', clearMemory);
 
