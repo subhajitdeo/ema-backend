@@ -2,12 +2,11 @@
   "manifest_version": 3,
   "name": "Zara",
   "version": "1.0.0",
-  "description": "Always‑listening voice assistant – wake word 'Zara'",
+  "description": "Your voice‑activated assistant for local commands and app launcher.",
   "permissions": [
     "storage",
     "tabs",
-    "commands",
-    "offscreen"
+    "commands"
   ],
   "background": {
     "service_worker": "background.js"
