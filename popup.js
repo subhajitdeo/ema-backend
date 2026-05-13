@@ -1,16 +1,16 @@
-// DOM elements
+// -------------------- DOM elements --------------------
 const questionInput = document.getElementById('questionInput');
 const sendBtn = document.getElementById('sendBtn');
 const micBtn = document.getElementById('micBtn');
 const clearMemoryBtn = document.getElementById('clearMemoryBtn');
 const conversationPanel = document.getElementById('conversationPanel');
 const statusSpan = document.getElementById('statusMsg');
-const alwaysListenToggle = document.getElementById('alwaysListenToggle');
 
-// Only for UI display (not saved)
-let displayMessages = [];
+// -------------------- Global state --------------------
+let conversationHistory = [];      // stores last 5 user/assistant messages
+let displayMessages = [];          // stores UI messages
 
-// App links
+// Predefined app links (you can add more)
 const APP_LINKS = {
   youtube: 'https://www.youtube.com',
   whatsapp: 'https://web.whatsapp.com',
@@ -26,17 +26,24 @@ const APP_LINKS = {
   'pw.live': 'https://pw.live'
 };
 
+// ---------- Clean text for speech and display (no emojis, no symbols, no code) ----------
 function cleanText(text) {
   if (!text) return '';
+  // Remove code blocks
   let cleaned = text.replace(/```[\s\S]*?```/g, '');
+  // Remove JSON-like structures
   cleaned = cleaned.replace(/\{[\s\S]*?\}/g, '');
   cleaned = cleaned.replace(/\[[\s\S]*?\]/g, '');
+  // Remove all symbols except letters, numbers, spaces, apostrophe
   cleaned = cleaned.replace(/[^\w\s']/g, ' ');
+  // Remove extra spaces
   cleaned = cleaned.replace(/\s+/g, ' ').trim();
+  // Remove any emojis
   cleaned = cleaned.replace(/[\p{Emoji}\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '');
   return cleaned;
 }
 
+// Text-to-speech (English, clear, no punctuation noise)
 function speakResponse(text) {
   const clean = cleanText(text);
   if (!clean) return;
@@ -49,6 +56,7 @@ function speakResponse(text) {
   window.speechSynthesis.speak(utterance);
 }
 
+// Render conversation UI
 function renderUI() {
   if (displayMessages.length === 0) {
     conversationPanel.innerHTML = `<div style="text-align:center; color:#6b7280; margin-top:30px;">✨ Ask me anything local: time, date, open apps, search YouTube</div>`;
@@ -78,24 +86,47 @@ function escapeHtml(str) {
   });
 }
 
+// Add message to UI and conversation history (max 5 exchanges = 10 messages)
 function addMessage(role, text) {
   const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute:'2-digit' });
   const cleanedText = cleanText(text);
   displayMessages.push({ role, text: cleanedText, timestamp });
-  if (displayMessages.length > 50) displayMessages.shift();
+  if (displayMessages.length > 100) displayMessages.shift();
   renderUI();
+
+  // Keep conversation history (for context of last 5 messages)
+  conversationHistory.push({ role, content: cleanedText });
+  while (conversationHistory.length > 10) conversationHistory.shift();
+  
+  // Save to storage
+  chrome.storage.local.set({ zara_history: conversationHistory, zara_display: displayMessages.slice(-50) });
 }
 
-function clearChat() {
+// Load saved messages from storage
+async function loadMemory() {
+  const data = await chrome.storage.local.get(['zara_history', 'zara_display']);
+  if (data.zara_history && Array.isArray(data.zara_history)) conversationHistory = data.zara_history;
+  if (data.zara_display && Array.isArray(data.zara_display)) {
+    displayMessages = data.zara_display;
+    renderUI();
+  }
+}
+
+// Clear memory (last 5 messages)
+function clearMemory() {
+  conversationHistory = [];
   displayMessages = [];
+  chrome.storage.local.remove(['zara_history', 'zara_display']);
   renderUI();
-  addMessage('assistant', 'Chat cleared. Ready for your next command.');
-  speakResponse('Chat cleared.');
+  addMessage('assistant', 'Memory cleared. Our conversation starts fresh.');
+  speakResponse('Memory cleared. Our conversation starts fresh.');
 }
 
+// ---------- LOCAL COMMAND PROCESSOR (no AI, no token waste) ----------
 function processLocalCommand(commandText) {
   const lower = commandText.toLowerCase().trim();
   
+  // Time & Date
   if (lower.includes('what time') || lower === 'time' || lower === 'current time') {
     const now = new Date();
     const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric' });
@@ -107,6 +138,7 @@ function processLocalCommand(commandText) {
     return `Today is ${dateStr}.`;
   }
 
+  // Open app: "open youtube", "open gmail", etc.
   const openMatch = lower.match(/^open\s+(\w+(?:\.\w+)?)$/);
   if (openMatch) {
     let appKey = openMatch[1];
@@ -118,12 +150,14 @@ function processLocalCommand(commandText) {
     }
   }
 
+  // Search YouTube: "search physics class 12 on youtube"
   const youtubeSearchMatch = lower.match(/search\s+(.+?)\s+on\s+youtube$/);
   if (youtubeSearchMatch) {
     const query = encodeURIComponent(youtubeSearchMatch[1].trim());
     chrome.tabs.create({ url: `https://www.youtube.com/results?search_query=${query}` });
     return `Searching YouTube for "${youtubeSearchMatch[1]}".`;
   }
+  // Alternative patterns: "play X on youtube", "find X youtube"
   const altYt = lower.match(/(?:play|find|watch)\s+(.+?)\s+on\s+youtube$/);
   if (altYt) {
     const query = encodeURIComponent(altYt[1].trim());
@@ -131,13 +165,18 @@ function processLocalCommand(commandText) {
     return `Searching YouTube for "${altYt[1]}".`;
   }
 
+  // If no command matches, return a helpful message
   return null;
 }
 
+// Main handler: process user input and respond
 async function handleUserInput(inputText) {
   if (!inputText.trim()) return;
+  
+  // Add user message to UI and history
   addMessage('user', inputText);
   
+  // Try to handle locally
   const response = processLocalCommand(inputText);
   if (response) {
     addMessage('assistant', response);
@@ -146,13 +185,14 @@ async function handleUserInput(inputText) {
     return;
   }
   
+  // If no local command matches
   const unknownMsg = "Sorry, I can only tell time, date, open apps, or search YouTube. Try 'open youtube', 'what time is it?', or 'search cat videos on youtube'.";
   addMessage('assistant', unknownMsg);
   speakResponse(unknownMsg);
   statusSpan.innerText = '⚠️ Unknown command.';
 }
 
-// Manual voice input
+// ---------- Voice Recognition ----------
 let recognition = null;
 if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -170,27 +210,7 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
   };
 }
 
-// Always-listen toggle
-alwaysListenToggle.addEventListener('change', async () => {
-  const enabled = alwaysListenToggle.checked;
-  await chrome.runtime.sendMessage({ type: 'setAlwaysListen', enabled });
-  statusSpan.innerText = enabled ? 'Always listening (say "Zara...")' : 'Always listening off';
-  setTimeout(() => { statusSpan.innerText = '✓ Ready · Ctrl+Shift+Z'; }, 2000);
-});
-
-chrome.storage.local.get(['alwaysListen'], (result) => {
-  alwaysListenToggle.checked = result.alwaysListen === true;
-});
-
-const port = chrome.runtime.connect({ name: 'popup' });
-port.postMessage({ type: 'getPendingCommand' });
-port.onMessage.addListener((msg) => {
-  if (msg.command) {
-    questionInput.value = msg.command;
-    handleUserInput(msg.command);
-  }
-});
-
+// ---------- Event Listeners ----------
 sendBtn.addEventListener('click', () => {
   const q = questionInput.value.trim();
   if (!q) return;
@@ -207,7 +227,7 @@ micBtn.addEventListener('click', () => {
   }
 });
 
-clearMemoryBtn.addEventListener('click', clearChat);
+clearMemoryBtn.addEventListener('click', clearMemory);
 
 questionInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) {
@@ -216,4 +236,8 @@ questionInput.addEventListener('keydown', (e) => {
   }
 });
 
-statusSpan.innerText = '✓ Ready · Ctrl+Shift+Z to open Zara';
+// Initialise: load stored conversation
+(async function init() {
+  await loadMemory();
+  statusSpan.innerText = '✓ Ready · Ctrl+Shift+Z to open Zara';
+})();
