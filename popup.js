@@ -7,7 +7,7 @@ const conversationPanel = document.getElementById('conversationPanel');
 const statusSpan = document.getElementById('statusMsg');
 const alwaysListenToggle = document.getElementById('alwaysListenToggle');
 
-// Only for UI display (not used for command logic, not saved)
+// Only for UI display (not saved)
 let displayMessages = [];
 
 // App links
@@ -26,7 +26,6 @@ const APP_LINKS = {
   'pw.live': 'https://pw.live'
 };
 
-// Clean text for speech (no symbols, emojis, but keep numbers)
 function cleanText(text) {
   if (!text) return '';
   let cleaned = text.replace(/```[\s\S]*?```/g, '');
@@ -83,12 +82,10 @@ function addMessage(role, text) {
   const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute:'2-digit' });
   const cleanedText = cleanText(text);
   displayMessages.push({ role, text: cleanedText, timestamp });
-  // Keep UI from growing too large (max 50 messages)
   if (displayMessages.length > 50) displayMessages.shift();
   renderUI();
 }
 
-// Clear only the on‑screen messages (no storage involved)
 function clearChat() {
   displayMessages = [];
   renderUI();
@@ -96,7 +93,6 @@ function clearChat() {
   speakResponse('Chat cleared.');
 }
 
-// Local command processor (no memory, one‑shot)
 function processLocalCommand(commandText) {
   const lower = commandText.toLowerCase().trim();
   
@@ -138,7 +134,6 @@ function processLocalCommand(commandText) {
   return null;
 }
 
-// Handle user input – each message is independent
 async function handleUserInput(inputText) {
   if (!inputText.trim()) return;
   addMessage('user', inputText);
@@ -157,7 +152,7 @@ async function handleUserInput(inputText) {
   statusSpan.innerText = '⚠️ Unknown command.';
 }
 
-// Voice input (manual mic)
+// Manual voice input
 let recognition = null;
 if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -175,7 +170,7 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
   };
 }
 
-// Toggle always-listen (off‑screen document)
+// Always-listen toggle
 alwaysListenToggle.addEventListener('change', async () => {
   const enabled = alwaysListenToggle.checked;
   await chrome.runtime.sendMessage({ type: 'setAlwaysListen', enabled });
@@ -183,12 +178,10 @@ alwaysListenToggle.addEventListener('change', async () => {
   setTimeout(() => { statusSpan.innerText = '✓ Ready · Ctrl+Shift+Z'; }, 2000);
 });
 
-// Load toggle state
 chrome.storage.local.get(['alwaysListen'], (result) => {
   alwaysListenToggle.checked = result.alwaysListen === true;
 });
 
-// Check for pending voice command from offscreen
 const port = chrome.runtime.connect({ name: 'popup' });
 port.postMessage({ type: 'getPendingCommand' });
 port.onMessage.addListener((msg) => {
@@ -198,7 +191,6 @@ port.onMessage.addListener((msg) => {
   }
 });
 
-// Event listeners
 sendBtn.addEventListener('click', () => {
   const q = questionInput.value.trim();
   if (!q) return;
@@ -215,7 +207,6 @@ micBtn.addEventListener('click', () => {
   }
 });
 
-// Clear chat button (was "Clear memory")
 clearMemoryBtn.addEventListener('click', clearChat);
 
 questionInput.addEventListener('keydown', (e) => {
@@ -225,5 +216,4 @@ questionInput.addEventListener('keydown', (e) => {
   }
 });
 
-// No initialisation of storage – just show ready
 statusSpan.innerText = '✓ Ready · Ctrl+Shift+Z to open Zara';
