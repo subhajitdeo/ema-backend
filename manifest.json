@@ -2,15 +2,11 @@
   "manifest_version": 3,
   "name": "Zara",
   "version": "1.0.0",
-  "description": "Your intelligent voice & text assistant with local commands and AI (OpenRouter).",
+  "description": "Your voice‑activated assistant for local commands and app launcher.",
   "permissions": [
     "storage",
     "tabs",
-    "activeTab",
     "commands"
-  ],
-  "host_permissions": [
-    "https://openrouter.ai/api/*"
   ],
   "background": {
     "service_worker": "background.js"
