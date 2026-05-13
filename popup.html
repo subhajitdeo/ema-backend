@@ -111,62 +111,6 @@
       margin-left: 8px;
     }
 
-    /* Toggle switch */
-    .toggle-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      background: #1e1e2c;
-      padding: 10px 14px;
-      border-radius: 28px;
-      margin-bottom: 16px;
-      border: 1px solid #2c2c3e;
-    }
-    .toggle-label {
-      font-size: 13px;
-      font-weight: 500;
-      color: #ffb347;
-    }
-    .switch {
-      position: relative;
-      display: inline-block;
-      width: 44px;
-      height: 22px;
-    }
-    .switch input {
-      opacity: 0;
-      width: 0;
-      height: 0;
-    }
-    .slider {
-      position: absolute;
-      cursor: pointer;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background-color: #3a3a50;
-      transition: 0.2s;
-      border-radius: 22px;
-    }
-    .slider:before {
-      position: absolute;
-      content: "";
-      height: 16px;
-      width: 16px;
-      left: 3px;
-      bottom: 3px;
-      background-color: white;
-      transition: 0.2s;
-      border-radius: 50%;
-    }
-    input:checked + .slider {
-      background-color: #ffb347;
-    }
-    input:checked + .slider:before {
-      transform: translateX(22px);
-    }
-
     .input-area {
       background: #1e1e2c;
       border-radius: 28px;
@@ -258,16 +202,7 @@
 <div class="app-container">
   <div class="header">
     <h1>ZARA</h1>
-    <div class="badge">always listen · voice · apps</div>
-  </div>
-
-  <!-- Always-listen toggle row -->
-  <div class="toggle-row">
-    <span class="toggle-label">🎤 Always listen (say "Zara ...")</span>
-    <label class="switch">
-      <input type="checkbox" id="alwaysListenToggle">
-      <span class="slider round"></span>
-    </label>
+    <div class="badge">local · voice · apps</div>
   </div>
 
   <div class="conversation-panel" id="conversationPanel">
@@ -280,7 +215,7 @@
     <button id="sendBtn">Send</button>
   </div>
   <div class="action-buttons">
-    <button id="clearMemoryBtn" class="clear-btn">🗑️ Clear chat</button>
+    <button id="clearMemoryBtn" class="clear-btn">🗑️ Clear memory (last 5 msgs)</button>
   </div>
   <div class="status" id="statusMsg">✓ Ready · Ctrl+Shift+Z to open Zara</div>
 </div>
