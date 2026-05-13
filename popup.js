@@ -7,8 +7,7 @@ const conversationPanel = document.getElementById('conversationPanel');
 const statusSpan = document.getElementById('statusMsg');
 const alwaysListenToggle = document.getElementById('alwaysListenToggle');
 
-// Global state
-let conversationHistory = [];
+// Only for UI display (not used for command logic, not saved)
 let displayMessages = [];
 
 // App links
@@ -84,33 +83,20 @@ function addMessage(role, text) {
   const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute:'2-digit' });
   const cleanedText = cleanText(text);
   displayMessages.push({ role, text: cleanedText, timestamp });
-  if (displayMessages.length > 100) displayMessages.shift();
+  // Keep UI from growing too large (max 50 messages)
+  if (displayMessages.length > 50) displayMessages.shift();
   renderUI();
-
-  conversationHistory.push({ role, content: cleanedText });
-  while (conversationHistory.length > 10) conversationHistory.shift();
-  chrome.storage.local.set({ zara_history: conversationHistory, zara_display: displayMessages.slice(-50) });
 }
 
-async function loadMemory() {
-  const data = await chrome.storage.local.get(['zara_history', 'zara_display']);
-  if (data.zara_history && Array.isArray(data.zara_history)) conversationHistory = data.zara_history;
-  if (data.zara_display && Array.isArray(data.zara_display)) {
-    displayMessages = data.zara_display;
-    renderUI();
-  }
-}
-
-function clearMemory() {
-  conversationHistory = [];
+// Clear only the on‑screen messages (no storage involved)
+function clearChat() {
   displayMessages = [];
-  chrome.storage.local.remove(['zara_history', 'zara_display']);
   renderUI();
-  addMessage('assistant', 'Memory cleared. Our conversation starts fresh.');
-  speakResponse('Memory cleared. Our conversation starts fresh.');
+  addMessage('assistant', 'Chat cleared. Ready for your next command.');
+  speakResponse('Chat cleared.');
 }
 
-// Local command processor
+// Local command processor (no memory, one‑shot)
 function processLocalCommand(commandText) {
   const lower = commandText.toLowerCase().trim();
   
@@ -152,6 +138,7 @@ function processLocalCommand(commandText) {
   return null;
 }
 
+// Handle user input – each message is independent
 async function handleUserInput(inputText) {
   if (!inputText.trim()) return;
   addMessage('user', inputText);
@@ -188,7 +175,7 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
   };
 }
 
-// Toggle always-listen
+// Toggle always-listen (off‑screen document)
 alwaysListenToggle.addEventListener('change', async () => {
   const enabled = alwaysListenToggle.checked;
   await chrome.runtime.sendMessage({ type: 'setAlwaysListen', enabled });
@@ -228,7 +215,8 @@ micBtn.addEventListener('click', () => {
   }
 });
 
-clearMemoryBtn.addEventListener('click', clearMemory);
+// Clear chat button (was "Clear memory")
+clearMemoryBtn.addEventListener('click', clearChat);
 
 questionInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) {
@@ -237,8 +225,5 @@ questionInput.addEventListener('keydown', (e) => {
   }
 });
 
-// Initialise
-(async function init() {
-  await loadMemory();
-  statusSpan.innerText = '✓ Ready · Ctrl+Shift+Z to open Zara';
-})();
+// No initialisation of storage – just show ready
+statusSpan.innerText = '✓ Ready · Ctrl+Shift+Z to open Zara';
