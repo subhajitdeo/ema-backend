@@ -1,40 +1,34 @@
 {
   "manifest_version": 3,
-  "name": "Zara AI - Ultimate Assistant",
-  "version": "3.0.0",
-  "description": "JARVIS-like assistant. Press Ctrl+Shift+Z to open, speak or type, get voice + text reply.",
+  "name": "Zara",
+  "version": "1.0.0",
+  "description": "Your intelligent voice & text assistant with local commands and AI (OpenRouter).",
   "permissions": [
     "storage",
-    "activeTab",
     "tabs",
-    "scripting",
-    "tts",
+    "activeTab",
     "commands"
   ],
   "host_permissions": [
-    "https://openrouter.ai/*",
-    "<all_urls>"
+    "https://openrouter.ai/api/*"
   ],
   "background": {
     "service_worker": "background.js"
   },
   "action": {
-    "default_popup": "popup.html"
+    "default_popup": "popup.html",
+    "default_title": "Zara – Ctrl+Shift+Z"
   },
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
-      "run_at": "document_idle"
-    }
-  ],
   "commands": {
-    "_execute_action": {
+    "activate-zara": {
       "suggested_key": {
         "default": "Ctrl+Shift+Z",
-        "mac": "MacCtrl+Shift+Z"
+        "mac": "Command+Shift+Z"
       },
-      "description": "Open Zara popup"
+      "description": "Open Zara assistant"
     }
+  },
+  "icons": {
+    "128": "icon.png"
   }
 }
