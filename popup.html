@@ -71,9 +71,8 @@
       background: #1e1e2c;
       border-radius: 20px;
       padding: 12px 14px;
-      margin-bottom: 12px;
+      margin-bottom: 16px;
       border: 1px solid #2c2c3e;
-      position: relative;
     }
     .api-label {
       font-size: 12px;
@@ -115,62 +114,6 @@
     }
     .save-key:hover {
       background: #3a3a50;
-    }
-
-    /* Compact 3-dot model selector */
-    .model-icon {
-      position: absolute;
-      bottom: 12px;
-      right: 14px;
-      background: #2c2c3e;
-      width: 34px;
-      height: 34px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      font-size: 20px;
-      font-weight: bold;
-      color: #ffb347;
-      transition: 0.2s;
-      z-index: 10;
-    }
-    .model-icon:hover {
-      background: #ffb347;
-      color: #12121c;
-    }
-    .model-menu {
-      position: absolute;
-      bottom: 50px;
-      right: 14px;
-      background: #1e1e2e;
-      border-radius: 16px;
-      padding: 8px 0;
-      min-width: 200px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-      border: 1px solid #3a3a50;
-      display: none;
-      z-index: 20;
-    }
-    .model-menu.show {
-      display: block;
-    }
-    .model-menu div {
-      padding: 10px 16px;
-      font-size: 13px;
-      cursor: pointer;
-      transition: 0.1s;
-      color: #e2e8f0;
-    }
-    .model-menu div:hover {
-      background: #2c2c42;
-      color: #ffb347;
-    }
-    .model-menu .selected {
-      background: #2a2a3e;
-      color: #ffb347;
-      font-weight: 500;
     }
 
     .conversation-panel {
@@ -319,13 +262,6 @@
     <div class="api-input-wrapper">
       <input type="password" id="apiKeyInput" placeholder="paste your key here" autocomplete="off">
       <button id="saveApiKeyBtn" class="save-key">Save</button>
-    </div>
-    <!-- 3-dot icon for model selection -->
-    <div class="model-icon" id="modelIcon">⋮</div>
-    <div class="model-menu" id="modelMenu">
-      <div data-model="meta-llama/llama-3.3-70b-instruct:free">⚡ Llama 3.3 70B (Powerful)</div>
-      <div data-model="google/gemini-2.0-flash-exp:free">🚀 Gemini 2.0 Flash (Powerful)</div>
-      <div data-model="mistralai/mistral-7b-instruct:free">🛡️ Mistral 7B (Normal)</div>
     </div>
   </div>
 
