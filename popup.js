@@ -1,178 +1,302 @@
-// popup.js – handles voice (auto-listen on open + button fallback), typed chat, one command then stop.
-
-let recognition = null;
-let isListening = false;
-let apiKey = '';
-let model = '';
-
-// DOM elements
-const voiceBtn = document.getElementById('voiceBtn');
-const voiceStatus = document.getElementById('voiceStatus');
-const chatMessages = document.getElementById('chatMessages');
-const userInput = document.getElementById('userInput');
-const sendBtn = document.getElementById('sendBtn');
+// -------------------- DOM elements --------------------
 const apiKeyInput = document.getElementById('apiKeyInput');
 const saveApiKeyBtn = document.getElementById('saveApiKeyBtn');
-const modelSelect = document.getElementById('modelSelect');
+const questionInput = document.getElementById('questionInput');
+const sendBtn = document.getElementById('sendBtn');
+const micBtn = document.getElementById('micBtn');
+const clearMemoryBtn = document.getElementById('clearMemoryBtn');
+const conversationPanel = document.getElementById('conversationPanel');
+const statusSpan = document.getElementById('statusMsg');
 
-// Load settings
-async function loadSettings() {
-    const result = await chrome.storage.local.get(['zara_openrouter_key', 'zara_selected_model']);
-    apiKey = result.zara_openrouter_key || '';
-    model = result.zara_selected_model || 'ring-2.6-1t:free';
-    if (apiKey) apiKeyInput.value = apiKey;
-    if (result.zara_selected_model) modelSelect.value = result.zara_selected_model;
-}
-loadSettings();
+// -------------------- Global state --------------------
+let conversationHistory = [];      // stores {role, content} for AI context (max 5 pairs)
+let displayMessages = [];          // stores {role, text, timestamp} for UI
 
-// Save API key
-saveApiKeyBtn.addEventListener('click', async () => {
-    let newKey = apiKeyInput.value.trim();
-    if (!newKey.startsWith('sk-or-')) {
-        alert('Invalid OpenRouter key (must start with sk-or-)');
-        return;
-    }
-    await chrome.storage.local.set({ zara_openrouter_key: newKey });
-    apiKey = newKey;
-    alert('API key saved.');
-    chrome.runtime.sendMessage({ type: 'updateSettings' });
-});
+// Predefined app links (presaved)
+const APP_LINKS = {
+  youtube: 'https://www.youtube.com',
+  whatsapp: 'https://web.whatsapp.com',
+  gmail: 'https://mail.google.com',
+  github: 'https://github.com',
+  gmap: 'https://maps.google.com',
+  chatgpt: 'https://chat.openai.com',
+  telegram: 'https://web.telegram.org',
+  deepseek: 'https://chat.deepseek.com',
+  googlephotos: 'https://photos.google.com',
+  googledoc: 'https://docs.google.com',
+  spotify: 'https://open.spotify.com',
+  'pw.live': 'https://pw.live'
+};
 
-// Save model
-modelSelect.addEventListener('change', async () => {
-    await chrome.storage.local.set({ zara_selected_model: modelSelect.value });
-    model = modelSelect.value;
-    chrome.runtime.sendMessage({ type: 'updateSettings' });
-});
-
-// Add message to chat (both user and assistant)
-function addMessage(text, sender) {
-    const msgDiv = document.createElement('div');
-    msgDiv.classList.add('message', sender);
-    msgDiv.textContent = text;
-    chatMessages.appendChild(msgDiv);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-}
-
-// Process a command (send to background, get response, display and speak)
-async function processCommand(commandText, isUserMessage = true) {
-    if (isUserMessage) addMessage(commandText, 'user');
-    
-    // Show thinking indicator
-    const thinkingDiv = document.createElement('div');
-    thinkingDiv.classList.add('message', 'assistant', 'thinking');
-    thinkingDiv.textContent = '🤔 Thinking...';
-    chatMessages.appendChild(thinkingDiv);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-
-    try {
-        const response = await chrome.runtime.sendMessage({ type: 'processCommand', text: commandText });
-        const answer = response.answer;
-        // Remove thinking indicator
-        thinkingDiv.remove();
-        addMessage(answer, 'assistant');
-        // Voice is already spoken by background, but we could also speak here if needed
-    } catch (err) {
-        thinkingDiv.remove();
-        addMessage('Error: ' + err.message, 'assistant');
-    }
+// Helper: sanitize text for display/speech – no emojis, no JSON, no * @ # symbols
+function sanitizeText(text) {
+  if (!text) return '';
+  // remove markdown code blocks
+  let cleaned = text.replace(/```[\s\S]*?```/g, '');
+  // remove JSON-like structures
+  cleaned = cleaned.replace(/\{[\s\S]*?\}/g, '');
+  cleaned = cleaned.replace(/\[[\s\S]*?\]/g, '');
+  // remove special symbols *, @, #, _, ~, `, |, >, <
+  cleaned = cleaned.replace(/[*@#_~`|<>]/g, '');
+  // remove emojis (Unicode emoji range)
+  cleaned = cleaned.replace(/[\p{Emoji}\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '');
+  // remove extra whitespace
+  cleaned = cleaned.replace(/\s+/g, ' ').trim();
+  return cleaned;
 }
 
-// Send typed message
-sendBtn.addEventListener('click', () => {
-    const text = userInput.value.trim();
-    if (!text) return;
-    userInput.value = '';
-    processCommand(text, true);
-});
-userInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') sendBtn.click();
-});
-
-// ---------- Voice Recognition ----------
-function initSpeech() {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-        voiceStatus.textContent = '❌ Speech not supported';
-        voiceBtn.disabled = true;
-        return null;
-    }
-    const recog = new SpeechRecognition();
-    recog.continuous = false;   // One command at a time
-    recog.interimResults = false;
-    recog.lang = 'en-US';
-    return recog;
+// Text-to-speech (clear english, no code sounds)
+function speakResponse(text) {
+  const clean = sanitizeText(text);
+  if (!clean) return;
+  const utterance = new SpeechSynthesisUtterance(clean);
+  utterance.lang = 'en-US';
+  utterance.rate = 0.95;
+  utterance.pitch = 1.0;
+  utterance.volume = 1;
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(utterance);
 }
 
-function startListening() {
-    if (!recognition) {
-        recognition = initSpeech();
-        if (!recognition) return;
-        
-        recognition.onstart = () => {
-            isListening = true;
-            voiceStatus.innerHTML = '🎤 Listening...';
-            voiceStatus.className = 'voice-status listening';
-            voiceBtn.classList.add('listening');
-        };
-        
-        recognition.onend = () => {
-            isListening = false;
-            voiceStatus.innerHTML = '⚪ Ready (click to speak)';
-            voiceStatus.className = 'voice-status idle';
-            voiceBtn.classList.remove('listening');
-        };
-        
-        recognition.onresult = (event) => {
-            const transcript = event.results[0][0].transcript;
-            addMessage(transcript, 'user');
-            processCommand(transcript, false); // Don't double-add user message
-            // Stop listening automatically (already set continuous=false)
-            if (recognition) recognition.stop();
-        };
-        
-        recognition.onerror = (e) => {
-            console.error('Speech error:', e.error);
-            voiceStatus.innerHTML = `⚠️ Error: ${e.error}`;
-            voiceStatus.className = 'voice-status error';
-            isListening = false;
-            if (recognition) recognition.stop();
-            setTimeout(() => {
-                if (voiceStatus.className !== 'listening') {
-                    voiceStatus.innerHTML = '⚪ Ready (click to speak)';
-                    voiceStatus.className = 'voice-status idle';
-                }
-            }, 2000);
-        };
-    }
-    
-    if (!isListening) {
-        try {
-            recognition.start();
-        } catch (err) {
-            console.error('Could not start recognition:', err);
-            voiceStatus.innerHTML = '❌ Mic error. Click again.';
-            voiceStatus.className = 'voice-status error';
-        }
-    }
+// Render conversation UI
+function renderUI() {
+  if (displayMessages.length === 0) {
+    conversationPanel.innerHTML = `<div style="text-align:center; color:#6b7280; margin-top:30px;">✨ Ask me anything · open apps · search YouTube</div>`;
+    return;
+  }
+  let html = '';
+  for (let msg of displayMessages) {
+    const bubbleClass = msg.role === 'user' ? 'user-msg' : 'assistant-msg';
+    const bubbleInner = msg.role === 'user' ? 'user-bubble' : 'assistant-bubble';
+    html += `
+      <div class="message ${bubbleClass}">
+        <div class="${bubbleInner}">${escapeHtml(msg.text)}</div>
+        <div class="timestamp">${msg.timestamp}</div>
+      </div>
+    `;
+  }
+  conversationPanel.innerHTML = html;
+  conversationPanel.scrollTop = conversationPanel.scrollHeight;
 }
 
-// Manual button click
-voiceBtn.addEventListener('click', () => {
-    if (isListening) {
-        recognition.stop();
+function escapeHtml(str) {
+  return str.replace(/[&<>]/g, function(m) {
+    if (m === '&') return '&amp;';
+    if (m === '<') return '&lt;';
+    if (m === '>') return '&gt;';
+    return m;
+  }).replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, function(c) {
+    return '';
+  });
+}
+
+// Add message to UI and memory (for AI context)
+function addMessage(role, text, addToAIHistory = true) {
+  const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute:'2-digit' });
+  displayMessages.push({ role, text, timestamp });
+  if (displayMessages.length > 100) displayMessages.shift(); // UI limit
+  renderUI();
+
+  if (addToAIHistory && role === 'user') {
+    conversationHistory.push({ role: 'user', content: text });
+    // trim to last 5 exchanges (5 user msgs + 5 assistant = 10 total but we keep 5 pairs)
+    while (conversationHistory.length > 10) conversationHistory.shift();
+  } else if (addToAIHistory && role === 'assistant') {
+    conversationHistory.push({ role: 'assistant', content: text });
+    while (conversationHistory.length > 10) conversationHistory.shift();
+  }
+  // Save to chrome storage for persistence
+  chrome.storage.local.set({ zara_history: conversationHistory, zara_display: displayMessages.slice(-50) });
+}
+
+// Load stored messages
+async function loadMemory() {
+  const data = await chrome.storage.local.get(['zara_history', 'zara_display']);
+  if (data.zara_history && Array.isArray(data.zara_history)) conversationHistory = data.zara_history;
+  if (data.zara_display && Array.isArray(data.zara_display)) {
+    displayMessages = data.zara_display;
+    renderUI();
+  }
+}
+
+// Clear memory (last 5 msgs)
+function clearMemory() {
+  conversationHistory = [];
+  displayMessages = [];
+  chrome.storage.local.remove(['zara_history', 'zara_display']);
+  renderUI();
+  addMessage('assistant', 'Memory cleared. Our conversation starts fresh.', true);
+}
+
+// ---------- LOCAL COMMAND INTELLIGENCE (no token waste) ----------
+function handleLocalCommand(commandText) {
+  const lower = commandText.toLowerCase().trim();
+  
+  // Time & Date (no AI)
+  if (lower.includes('what time') || lower === 'time' || lower === 'current time') {
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric' });
+    return `The current time is ${timeStr}.`;
+  }
+  if (lower.includes('what date') || lower === 'date' || lower.includes("today's date")) {
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    return `Today is ${dateStr}.`;
+  }
+
+  // Open app command: "open youtube", "open gmail", "open github"
+  const openMatch = lower.match(/^open\s+(\w+(?:\.\w+)?)$/);
+  if (openMatch) {
+    let appKey = openMatch[1];
+    if (APP_LINKS[appKey]) {
+      chrome.tabs.create({ url: APP_LINKS[appKey] });
+      return `Opening ${appKey} for you.`;
     } else {
-        startListening();
+      return `Sorry, I don't have a saved link for "${appKey}". Available: ${Object.keys(APP_LINKS).join(', ')}`;
     }
+  }
+
+  // Search on YouTube: "search physics class 12 on youtube"
+  const youtubeSearchMatch = lower.match(/search\s+(.+?)\s+on\s+youtube$/);
+  if (youtubeSearchMatch) {
+    const query = encodeURIComponent(youtubeSearchMatch[1].trim());
+    chrome.tabs.create({ url: `https://www.youtube.com/results?search_query=${query}` });
+    return `Searching YouTube for "${youtubeSearchMatch[1]}".`;
+  }
+  // also "play X on youtube" or "find X youtube"
+  const altYt = lower.match(/(?:play|find|watch)\s+(.+?)\s+on\s+youtube$/);
+  if (altYt) {
+    const query = encodeURIComponent(altYt[1].trim());
+    chrome.tabs.create({ url: `https://www.youtube.com/results?search_query=${query}` });
+    return `Searching YouTube for "${altYt[1]}".`;
+  }
+
+  return null; // not handled locally -> use AI
+}
+
+// ---------- AI call via OpenRouter ----------
+async function callOpenRouter(userQuery) {
+  const apiKey = await chrome.storage.local.get(['openrouter_key']);
+  if (!apiKey.openrouter_key) {
+    return "⚠️ Please set your OpenRouter API key in the extension settings first.";
+  }
+  // Build messages with conversation history (last 5 exchanges)
+  const systemMsg = {
+    role: 'system',
+    content: `You are Zara, a helpful voice assistant. Always answer concisely, clearly, in English. NEVER use emojis, never output JSON, never use symbols like *, @, #, or markdown. Provide high-quality natural answers. Do NOT mention code, brackets, or anything that looks like code.`
+  };
+  let messages = [systemMsg, ...conversationHistory.slice(-10), { role: 'user', content: userQuery }];
+  
+  try {
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey.openrouter_key}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'openai/gpt-3.5-turbo',
+        messages: messages,
+        max_tokens: 300,
+        temperature: 0.7
+      })
+    });
+    if (!response.ok) {
+      const errText = await response.text();
+      return `AI error: ${response.status} - ${errText.substring(0, 100)}`;
+    }
+    const data = await response.json();
+    let rawReply = data.choices[0].message.content;
+    rawReply = sanitizeText(rawReply);
+    return rawReply || "I couldn't generate a proper answer.";
+  } catch (err) {
+    console.error(err);
+    return "Network error. Please check your connection.";
+  }
+}
+
+// Main processor: check local commands first, else AI
+async function processQuery(queryText) {
+  if (!queryText.trim()) return;
+  // add user message to UI & history
+  addMessage('user', queryText, true);
+  
+  // local command handling (no token)
+  const localResponse = handleLocalCommand(queryText);
+  if (localResponse) {
+    addMessage('assistant', localResponse, true);
+    speakResponse(localResponse);
+    statusSpan.innerText = '✓ Local command executed.';
+    return;
+  }
+  
+  // else call AI
+  statusSpan.innerText = '🤖 Zara is thinking (AI)...';
+  const aiReply = await callOpenRouter(queryText);
+  const cleanReply = sanitizeText(aiReply);
+  addMessage('assistant', cleanReply, true);
+  speakResponse(cleanReply);
+  statusSpan.innerText = '✓ Ready · Ctrl+Shift+Z';
+}
+
+// ---------- Voice recognition ----------
+let recognition = null;
+if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SpeechRecognition();
+  recognition.lang = 'en-US';
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+  recognition.onresult = (event) => {
+    const spoken = event.results[0][0].transcript;
+    questionInput.value = spoken;
+    processQuery(spoken);
+  };
+  recognition.onerror = (e) => {
+    statusSpan.innerText = `🎤 Voice error: ${e.error}`;
+  };
+}
+
+// ---------- Event listeners & initialization ----------
+saveApiKeyBtn.addEventListener('click', async () => {
+  const key = apiKeyInput.value.trim();
+  if (key) {
+    await chrome.storage.local.set({ openrouter_key: key });
+    statusSpan.innerText = '✅ API key saved!';
+    setTimeout(() => { statusSpan.innerText = '✓ Ready · Ctrl+Shift+Z'; }, 2000);
+  } else {
+    statusSpan.innerText = '❌ Please enter a valid key';
+  }
 });
 
-// Auto-listen when popup opens (with small delay to ensure DOM ready)
-setTimeout(() => {
-    // Only auto-listen if no API key? No, always auto-listen (user can cancel by clicking)
-    startListening();
-}, 500);
+sendBtn.addEventListener('click', () => {
+  const q = questionInput.value.trim();
+  if (!q) return;
+  questionInput.value = '';
+  processQuery(q);
+});
 
-// Keep service worker alive via keepalive ping (optional)
-setInterval(() => {
-    chrome.runtime.sendMessage({ type: 'ping' }).catch(() => {});
-}, 25000);
+micBtn.addEventListener('click', () => {
+  if (recognition) {
+    recognition.start();
+    statusSpan.innerText = '🎙️ Listening...';
+  } else {
+    statusSpan.innerText = 'Voice not supported in this browser.';
+  }
+});
+
+clearMemoryBtn.addEventListener('click', clearMemory);
+
+questionInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendBtn.click();
+  }
+});
+
+// load saved api key and memory
+(async function init() {
+  const saved = await chrome.storage.local.get(['openrouter_key']);
+  if (saved.openrouter_key) apiKeyInput.value = saved.openrouter_key;
+  await loadMemory();
+})();
