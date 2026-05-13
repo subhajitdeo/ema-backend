@@ -71,7 +71,7 @@
       background: #1e1e2c;
       border-radius: 20px;
       padding: 12px 14px;
-      margin-bottom: 16px;
+      margin-bottom: 12px;
       border: 1px solid #2c2c3e;
     }
     .api-label {
@@ -114,6 +114,39 @@
     }
     .save-key:hover {
       background: #3a3a50;
+    }
+
+    /* Model selector row - fits seamlessly */
+    .model-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-top: 10px;
+      background: #13131f;
+      padding: 8px 12px;
+      border-radius: 40px;
+    }
+    .model-label {
+      font-size: 11px;
+      font-weight: 500;
+      color: #ffb347;
+      background: #2a2a3c;
+      padding: 4px 10px;
+      border-radius: 30px;
+    }
+    #modelSelect {
+      flex: 1;
+      background: #0b0b14;
+      border: 1px solid #33334a;
+      border-radius: 40px;
+      padding: 8px 12px;
+      color: #f0f0f0;
+      font-size: 12px;
+      outline: none;
+      cursor: pointer;
+    }
+    #modelSelect:focus {
+      border-color: #ffb347;
     }
 
     .conversation-panel {
@@ -262,6 +295,16 @@
     <div class="api-input-wrapper">
       <input type="password" id="apiKeyInput" placeholder="paste your key here" autocomplete="off">
       <button id="saveApiKeyBtn" class="save-key">Save</button>
+    </div>
+
+    <!-- Model selector - sleek row -->
+    <div class="model-row">
+      <span class="model-label">🧠 AI Model</span>
+      <select id="modelSelect">
+        <option value="meta-llama/llama-3.3-70b-instruct:free">⚡ Llama 3.3 70B (Powerful - Best reasoning)</option>
+        <option value="google/gemini-2.0-flash-exp:free">🚀 Gemini 2.0 Flash (Powerful - Fast & 1M context)</option>
+        <option value="mistralai/mistral-7b-instruct:free">🛡️ Mistral 7B (Normal - Lightweight fallback)</option>
+      </select>
     </div>
   </div>
 
