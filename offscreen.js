@@ -15,10 +15,15 @@ function startRecognition() {
   recognition.continuous = true;
   recognition.maxAlternatives = 1;
 
+  recognition.onstart = () => {
+    console.log('Recognition started');
+  };
+
   recognition.onresult = (event) => {
     for (let i = event.resultIndex; i < event.results.length; i++) {
       const transcript = event.results[i][0].transcript.trim().toLowerCase();
       if (!event.results[i].isFinal) {
+        // Interim result – check for wake word
         if (transcript.includes('zara')) {
           if (!wakeWordDetected) {
             wakeWordDetected = true;
@@ -35,6 +40,7 @@ function startRecognition() {
           commandBuffer += transcript + ' ';
         }
       } else {
+        // Final result
         if (wakeWordDetected) {
           const finalCommand = commandBuffer.trim();
           if (finalCommand.length > 0) {
@@ -57,10 +63,15 @@ function startRecognition() {
   };
 
   recognition.onend = () => {
+    console.log('Recognition ended, restarting if active');
     if (listeningActive) startRecognition();
   };
 
-  recognition.start();
+  try {
+    recognition.start();
+  } catch(e) {
+    console.error('Failed to start recognition:', e);
+  }
 }
 
 // Listen for start/stop commands from background
@@ -74,14 +85,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   } else if (message.type === 'stopListening') {
     listeningActive = false;
     if (recognition) {
-      recognition.stop();
+      try {
+        recognition.stop();
+      } catch(e) { console.warn(e); }
     }
     sendResponse({ status: 'stopped' });
   }
   return true;
 });
 
-// Notify background that we are alive and request current state
+// Notify background that we are alive
 try {
   chrome.runtime.sendMessage({ type: 'offscreenReady' });
-} catch(e) { console.warn(e); }
+} catch(e) {
+  console.warn('Failed to send offscreenReady:', e);
+}
