@@ -19,11 +19,9 @@ async function closeOffscreen() {
   }
 }
 
-// Listen for messages from offscreen
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'offscreenReady') {
     offscreenReady = true;
-    // If always-listen was enabled, tell offscreen to start
     chrome.storage.local.get(['alwaysListen'], (result) => {
       if (result.alwaysListen === true && offscreenReady) {
         chrome.runtime.sendMessage({ type: 'startListening' }).catch(e => console.warn(e));
@@ -79,7 +77,6 @@ chrome.commands.onCommand.addListener((command) => {
   }
 });
 
-// On extension startup, restore always-listen state
 chrome.storage.local.get(['alwaysListen'], (result) => {
   if (result.alwaysListen === true) {
     createOffscreen();
